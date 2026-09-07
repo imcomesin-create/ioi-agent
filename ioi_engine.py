@@ -1,57 +1,48 @@
-import google.generativeai as genai
+import groq
 import fitz  # PyMuPDF
+import os
 
 class IOIAgent:
     def __init__(self, api_key):
         try:
-            # Clean the key
-            clean_key = api_key.strip().replace('"', '').replace("'", "")
-            genai.configure(api_key=clean_key)
-            
-            # TRIPLE FALLBACK STRATEGY
-            # We try three different model names to ensure compatibility
-            self.model_names = ['gemini-1.5-flash-latest', 'gemini-1.5-pro-latest', 'gemini-pro']
-            self.model = None
-            
-            for name in self.model_names:
-                try:
-                    test_model = genai.GenerativeModel(name)
-                    # Test if the model actually responds
-                    test_model.generate_content("health check")
-                    self.model = test_model
-                    print(f"Success: Using {name}")
-                    break
-                except:
-                    continue
-                    
+            # Groq Client setup
+            self.client = groq.Groq(api_key=api_key.strip().strip('"'))
+            self.model = "llama3-8b-8192" # Fast and accurate
         except Exception as e:
-            self.model = None
+            self.client = None
+            print(f"Init Error: {e}")
 
     def parse_cv(self, pdf_file):
-        if not self.model: return "API Key Error: Could not initialize any Gemini model."
+        if not self.client: return "API Key missing."
         try:
             doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
             text = " ".join([page.get_text() for page in doc])
-            response = self.model.generate_content(f"Summarize this CV briefly: {text}")
-            return response.text
+            chat_completion = self.client.chat.completions.create(
+                messages=[{"role": "user", "content": f"Summarize this CV briefly: {text[:5000]}"}],
+                model=self.model,
+            )
+            return chat_completion.choices[0].message.content
         except Exception as e:
-            return f"CV Error: {str(e)}"
+            return f"CV Error: {e}"
 
     def search_high_signal_leads(self, industry, location, profile):
-        if not self.model: return "API Key Error: Check your Gemini Key in Streamlit Secrets."
-        
-        prompt = f"""
-        List 5 real and well-known {industry} firms in {location} for an internship.
-        Candidate background: {profile}.
-        Provide a professional list.
-        """
+        if not self.client: return "Check your Groq Key in Secrets."
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
+            prompt = f"List 5 internship targets in {industry} in {location} for this student: {profile}. Be specific."
+            chat_completion = self.client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=self.model,
+            )
+            return chat_completion.choices[0].message.content
         except Exception as e:
-            return f"The AI could not process this search. Please ensure your API key is from the 'Free Tier' and is active. Error: {str(e)}"
+            return f"Model Error: {str(e)}"
 
     def generate_outreach(self, lead, profile):
-        if not self.model: return "Error"
-        response = self.model.generate_content(f"Short LinkedIn hook for {lead} and {profile}.")
-        return response.text
+        try:
+            res = self.client.chat.completions.create(
+                messages=[{"role": "user", "content": f"Write a 1-sentence LinkedIn hook for {lead} and {profile}"}],
+                model=self.model,
+            )
+            return res.choices[0].message.content
+        except:
+            return "Error generating message."
