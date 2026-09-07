@@ -6,10 +6,10 @@ class IOIAgent:
     def __init__(self, api_key):
         genai.configure(api_key=api_key)
         # Using Gemini 1.5 Pro with native Google Search grounding
-        self.model = genai.GenerativeModel(
-            model_name='gemini-1.5-pro',
-            tools=[{"google_search_indexing": {}}]
-        )
+       self.model = genai.GenerativeModel(
+    model_name='gemini-1.5-pro',
+    tools=[{"google_search_retrieval": {}}]
+)
 
     def parse_cv(self, pdf_file):
         """Extracts and structures CV data."""
