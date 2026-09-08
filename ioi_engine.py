@@ -1,48 +1,44 @@
-import groq
+import google.generativeai as genai
 import fitz  # PyMuPDF
-import os
+import json
 
 class IOIAgent:
     def __init__(self, api_key):
-        try:
-            # Groq Client setup
-            self.client = groq.Groq(api_key=api_key.strip().strip('"'))
-            self.model = "llama3-8b-8192" # Fast and accurate
-        except Exception as e:
-            self.client = None
-            print(f"Init Error: {e}")
+        genai.configure(api_key=api_key)
+        # Use 'gemini-1.5-flash' - this is the most compatible name
+        self.model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            tools=[{"google_search_retrieval": {}}]
+        )
 
     def parse_cv(self, pdf_file):
-        if not self.client: return "API Key missing."
+        """Extracts and structures CV data."""
         try:
             doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
             text = " ".join([page.get_text() for page in doc])
-            chat_completion = self.client.chat.completions.create(
-                messages=[{"role": "user", "content": f"Summarize this CV briefly: {text[:5000]}"}],
-                model=self.model,
-            )
-            return chat_completion.choices[0].message.content
+            prompt = f"Extract into JSON: Full Name, University, Degree, Skills. Text: {text}"
+            response = self.model.generate_content(prompt)
+            return response.text
         except Exception as e:
-            return f"CV Error: {e}"
+            return f"Error: {str(e)}"
 
     def search_high_signal_leads(self, industry, location, profile):
-        if not self.client: return "Check your Groq Key in Secrets."
+        """Discovers companies using real-time Google Search grounding."""
         try:
-            prompt = f"List 5 internship targets in {industry} in {location} for this student: {profile}. Be specific."
-            chat_completion = self.client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=self.model,
-            )
-            return chat_completion.choices[0].message.content
+            prompt = f"Find 5 {industry} firms in {location} with recent news. JSON list: company, signal, contact, score, why. Profile: {profile}"
+            # The tool might fail in some regions/accounts
+            response = self.model.generate_content(prompt)
+            return response.text
         except Exception as e:
-            return f"Model Error: {str(e)}"
+            # Fallback: if search tool fails, try without it
+            try:
+                fallback_model = genai.GenerativeModel('gemini-1.5-flash')
+                res = fallback_model.generate_content(f"List 5 well-known {industry} firms in {location} for internships. Format as JSON.")
+                return f"Search tool unavailable. Here are general targets:\n\n{res.text}"
+            except:
+                return f"Internal Error: {str(e)}"
 
     def generate_outreach(self, lead, profile):
-        try:
-            res = self.client.chat.completions.create(
-                messages=[{"role": "user", "content": f"Write a 1-sentence LinkedIn hook for {lead} and {profile}"}],
-                model=self.model,
-            )
-            return res.choices[0].message.content
-        except:
-            return "Error generating message."
+        prompt = f"Draft a short LinkedIn message for {lead} based on {profile}."
+        response = self.model.generate_content(prompt)
+        return response.text
