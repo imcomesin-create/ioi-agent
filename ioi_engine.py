@@ -4,41 +4,67 @@ import json
 
 class IOIAgent:
     def __init__(self, api_key):
-        genai.configure(api_key=api_key)
-        # Use 'gemini-1.5-flash' - this is the most compatible name
-        self.model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash',
-            tools=[{"google_search_retrieval": {}}]
-        )
+        try:
+            # Key ko clean karna zaroori hai (agar quotes aa gaye hon toh)
+            clean_key = api_key.strip().strip('"').strip("'")
+            genai.configure(api_key=clean_key)
+            
+            # Hum 'gemini-1.5-flash' use karenge kyunki ye fast aur stable hai
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # Ek chhota sa test call check karne ke liye
+            self.model.generate_content("test")
+        except Exception as e:
+            self.model = None
+            print(f"Initialization Error: {e}")
 
     def parse_cv(self, pdf_file):
-        """Extracts and structures CV data."""
+        """CV se skills aur experience extract karne ke liye"""
+        if not self.model: return "Agent not initialized. Check API Key."
         try:
             doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
             text = " ".join([page.get_text() for page in doc])
-            prompt = f"Extract into JSON: Full Name, University, Degree, Skills. Text: {text}"
+            
+            prompt = f"""
+            Extract the following into a JSON-like summary: 
+            Name, University, Degree, Key Skills, and Top 3 Selling Points.
+            CV Text: {text[:8000]}
+            """
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            return f"Error: {str(e)}"
+            return f"CV Error: {str(e)}"
 
     def search_high_signal_leads(self, industry, location, profile):
-        """Discovers companies using real-time Google Search grounding."""
+        """Industry aur Location ke hisaab se internship targets dhundne ke liye"""
+        if not self.model: return "API Key issues. Check Streamlit Secrets."
+        
+        prompt = f"""
+        Act as a professional career coach and research analyst.
+        Identify 5 real companies/firms in {location} for a {industry} internship.
+        Focus on firms that are currently growing or active.
+        For each, provide:
+        - Company Name
+        - Why it fits this candidate profile: {profile}
+        - Recent news or 'Opportunity Signal' if possible.
+        """
         try:
-            prompt = f"Find 5 {industry} firms in {location} with recent news. JSON list: company, signal, contact, score, why. Profile: {profile}"
-            # The tool might fail in some regions/accounts
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            # Fallback: if search tool fails, try without it
-            try:
-                fallback_model = genai.GenerativeModel('gemini-1.5-flash')
-                res = fallback_model.generate_content(f"List 5 well-known {industry} firms in {location} for internships. Format as JSON.")
-                return f"Search tool unavailable. Here are general targets:\n\n{res.text}"
-            except:
-                return f"Internal Error: {str(e)}"
+            return f"Search Error: {str(e)}"
 
     def generate_outreach(self, lead, profile):
-        prompt = f"Draft a short LinkedIn message for {lead} based on {profile}."
-        response = self.model.generate_content(prompt)
-        return response.text
+        """Personalized LinkedIn message banane ke liye"""
+        if not self.model: return "Error"
+        prompt = f"""
+        Write a concise, professional LinkedIn connection request (max 300 characters).
+        Target: {lead}
+        Candidate Background: {profile}
+        Rule: Direct, value-driven, no generic flattery.
+        """
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text
+        except:
+            return "Outreach generation failed."
