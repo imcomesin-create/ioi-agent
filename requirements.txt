@@ -1,4 +1,4 @@
-groq
+google-generativeai
 streamlit
 supabase
 pymupdf
